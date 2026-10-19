@@ -53,154 +53,47 @@ Unlike naive RAG pipelines that execute a rigid `Query ➔ Embed ➔ Top-K ➔ A
 
 ## 📊 System Flowcharts
 
-### 1. End-to-End Query Lifecycle
+### 1. How a Query is Processed (User Query Lifecycle)
 
 ```mermaid
 flowchart TD
-    subgraph Client ["Client Interface"]
-        User(["👤 User Query"])
-        UI["🖥️ Streamlit Chat Interface\n(ui/app.py)"]
-    end
+    A["👤 User asks a question"] --> B{"🛡️ 1. Guardrail Check\nIs question safe & on-topic?"}
 
-    subgraph Gateway_API ["API & Safety Layer"]
-        API["⚡ FastAPI Endpoint\nPOST /query"]
-        Guard{"🛡️ NeMo Guardrails\nColang Rules & Input Filter"}
-        GuardRefuse["🚫 Direct Refusal Response\n'I am restricted to enterprise knowledge.'"]
-    end
+    B -->|"❌ Off-Topic / Jailbreak"| C["🚫 Fast Refusal\n'I only answer enterprise doc questions'"]
+    B -->|"✅ Safe & Relevant"| D{"🧠 2. Agent Planner\nDoes it need document search?"}
 
-    subgraph Agent_Core ["LangGraph Agentic State Machine"]
-        State["📦 AgentState\n(messages, route, retrieved_docs, context)"]
-        Planner["🗺️ Planner Node\nIntent & Semantic Routing"]
-        Retriever["🔍 Retriever Node\nTool: retrieve_documents"]
-        Responder["💬 Responder Node\nSynthesis with Grounded Context"]
-        Memory[("💾 MemorySaver\nSession Checkpoints")]
-    end
+    D -->|"💬 Casual / Memory"| E["Direct Reply\n(From chat history)"]
+    D -->|"🔍 Technical Query"| F["3. Qdrant Vector Search\n(Find candidate document chunks)"]
 
-    subgraph Search_Engine ["Search & Re-Ranking Engine"]
-        GeminiEmb["🔢 Google Gemini Embedding\n(3072-dim Vector)"]
-        Qdrant[("🗄️ Qdrant Cloud\nCollection: enterprise_rag")]
-        FlashRank["⚡ FlashRank Local Reranker\nCross-Encoder Model"]
-    end
+    F --> G["⚡ 4. FlashRank Reranker\n(Filter noise & keep top 4 best matches)"]
+    G --> H["🔀 5. Portkey + Groq LLM\n(Draft answer using verified facts)"]
 
-    subgraph Model_Gateway ["Portkey Resilient LLM Gateway"]
-        Portkey["🔀 Portkey AI Gateway\nLoad Balancing & Observability"]
-        GroqPrimary["🦙 Primary Groq LLM\n(openai/gpt-oss-120b)"]
-        GroqFallback["🦙 Fallback Groq LLM\n(openai/gpt-oss-20b)"]
-    end
-
-    %% Flow connections
-    User --> UI
-    UI -->|HTTP POST| API
-    API --> Guard
-
-    Guard -->|Violates Guardrail / Off-Topic| GuardRefuse
-    GuardRefuse -->|Refusal JSON| UI
-
-    Guard -->|Passed / In-Domain| State
-    State --> Planner
-    Planner --> Portkey
-
-    Planner -->|Route: Conversational| Responder
-    Planner -->|Route: Technical| Retriever
-
-    Retriever --> GeminiEmb
-    GeminiEmb -->|Query Vector| Qdrant
-    Qdrant -->|Top 10 Raw Chunks| FlashRank
-    FlashRank -->|Top 4 Re-Ranked Chunks| Responder
-
-    Responder --> Portkey
-    Portkey -->|Primary Route| GroqPrimary
-    Portkey -.->|On Rate Limit / 429| GroqFallback
-
-    Responder -->|State Update| Memory
-    Memory -.->|Context History| Planner
-    Responder -->|Synthesized Answer + Sources| API
-    API --> UI
-    UI --> User
-
-    classDef client fill:#1E293B,stroke:#38BDF8,stroke-width:2px,color:#F8FAFC;
-    classDef safety fill:#450A0A,stroke:#EF4444,stroke-width:2px,color:#FEE2E2;
-    classDef agent fill:#0F172A,stroke:#818CF8,stroke-width:2px,color:#EEF2FF;
-    classDef search fill:#064E3B,stroke:#10B981,stroke-width:2px,color:#ECFDF5;
-    classDef gateway fill:#4C1D95,stroke:#A855F7,stroke-width:2px,color:#FAF5FF;
-
-    class User,UI client;
-    class API,Guard,GuardRefuse safety;
-    class State,Planner,Retriever,Responder,Memory agent;
-    class GeminiEmb,Qdrant,FlashRank search;
-    class Portkey,GroqPrimary,GroqFallback gateway;
+    H --> I["✅ Grounded Answer with Source Citations"]
+    E --> I
 ```
 
 ---
 
-### 2. Multi-Format Ingestion Pipeline
+### 2. How Documents are Ingested (Data Ingestion Pipeline)
 
 ```mermaid
 flowchart LR
-    subgraph Raw_Docs ["📂 Raw Enterprise Documents (DATA/true_data)"]
-        PDF["📄 PDF Files\n(Minikube, Reports)"]
-        HTML["🌐 HTML Guides\n(Autoscaling, APIs)"]
-        DOCX["📝 Word Docs\n(CronJobs, Monitoring)"]
-        PPTX["📊 PowerPoint\n(Architecture Deck)"]
-        TXT["📜 Text Files\n(Redis Work Queues)"]
-    end
-
-    subgraph Loaders ["Multi-Format Loaders (app/ingestion/loaders/)"]
-        L_PDF["pypdf / pdfplumber"]
-        L_HTML["BeautifulSoup4 + lxml"]
-        L_OFFICE["python-docx / python-pptx"]
-        L_TXT["Native UTF-8 Parser"]
-    end
-
-    subgraph Chunking_Layer ["Semantic Chunking (app/ingestion/chunking/)"]
-        Chunker["✂️ Paragraph-Aware Splitter\n• Preserves \\n\\n Boundaries\n• Max 1,500 Chars\n• No Mid-Sentence Truncation"]
-        LocalCache[("📁 processed_data/\nJSON Metadata Archive")]
-    end
-
-    subgraph Indexing ["Vectorization & Indexing"]
-        Gemini["🔢 Gemini Embeddings\ngemini-embedding-2-preview\n(3072 Dimensions)"]
-        QdrantDB[("🗄️ Qdrant Cloud Cluster\nVector Points with Metadata Payloads")]
-    end
-
-    PDF --> L_PDF
-    HTML --> L_HTML
-    DOCX --> L_OFFICE
-    PPTX --> L_OFFICE
-    TXT --> L_TXT
-
-    L_PDF & L_HTML & L_OFFICE & L_TXT --> Chunker
-    Chunker --> LocalCache
-    Chunker --> Gemini
-    Gemini -->|Vectors + Payload| QdrantDB
+    A["📂 Enterprise Files\n(PDF, HTML, DOCX, PPTX, TXT)"] --> B["✂️ Paragraph Splitter\n(Clean chunks, max 1500 chars)"]
+    B --> C["🔢 Gemini Embeddings\n(Convert text to 3072-dim vectors)"]
+    C --> D[("🗄️ Qdrant Cloud DB\n(Indexed vectors & metadata)")]
 ```
 
 ---
 
-### 3. LLM Gateway & Resilient Fallback
+### 3. How the LLM Gateway Handles Failures (Zero-Downtime Fallback)
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant App as 🧠 LangGraph Node
-    participant PK as 🔀 Portkey AI Gateway
-    participant G1 as 🦙 Groq Primary Key
-    participant G2 as 🦙 Groq Fallback Key
-
-    App->>PK: POST /chat/completions (Model: openai/gpt-oss-120b)
-    Note over PK: Evaluates routing slug & rate limits
-    
-    alt Primary Key Operational
-        PK->>G1: Forward Request
-        G1-->>PK: 200 OK (Stream Completion)
-        PK-->>App: Return Synthesized Response
-    else Primary Rate-Limited / Network Error (429 / 5xx)
-        PK->>G1: Forward Request
-        G1-->>PK: 429 Rate Limit Reached
-        Note over PK: Automatic failover trigger
-        PK->>G2: Forward to Fallback Target (Model: openai/gpt-oss-20b)
-        G2-->>PK: 200 OK (Successful Generation)
-        PK-->>App: Return Synthesized Response
-    end
+flowchart LR
+    A["🧠 Agent Request"] --> B["🔀 Portkey Gateway"]
+    B -->|"1. Normal Request"| C["🦙 Groq Primary Key\n(High-speed LPU)"]
+    B -.->|"2. If Busy / Rate-Limited (429)"| D["🔄 Groq Fallback Key\n(Automatic Failover)"]
+    C --> E["✅ Verified Response to User"]
+    D --> E
 ```
 
 ---
