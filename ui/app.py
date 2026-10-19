@@ -28,8 +28,8 @@ except Exception as e:
 
 # --- PAGE CONFIG ---
 st.set_page_config(
-    page_title="Enterprise Agentic RAG",
-    page_icon="🤖",
+    page_title="AxiomRAG | Enterprise Intelligence",
+    page_icon="🛡️",
     layout="wide",
 )
 
@@ -49,7 +49,7 @@ if "messages" not in st.session_state:
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.title("🧠 Agent OS")
+    st.title("🛡️ AxiomRAG OS")
     st.markdown("---")
     st.success(f"Logfire: {LOGFIRE_STATUS}")
     st.info(f"Memory ID: {st.session_state.session_id[:8]}")
@@ -61,7 +61,8 @@ with st.sidebar:
         st.rerun()
 
 # --- MAIN CHAT ---
-st.title("🤖 Enterprise Agentic Assistant")
+st.title("🛡️ AxiomRAG Assistant")
+st.caption("Grounded Enterprise Knowledge & Agentic Retrieval Engine")
 
 
 # Display history

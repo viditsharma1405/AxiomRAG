@@ -1,4 +1,4 @@
-# 🛡️ Enterprise Agentic RAG: Production-Grade Knowledge & Retrieval Platform
+# 🛡️ AxiomRAG: Production-Grade Agentic Knowledge & Retrieval Platform
 
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -11,7 +11,7 @@
 [![Logfire](https://img.shields.io/badge/Pydantic-Logfire_Tracing-E92063?style=for-the-badge)](https://logfire.pydantic.dev)
 [![RAGAS](https://img.shields.io/badge/RAGAS-Evaluation_Suite-8A2BE2?style=for-the-badge)](https://github.com/explodinggradients/ragas)
 
-A battle-tested, enterprise-scale **Agentic Retrieval-Augmented Generation (RAG)** platform. Built with **LangGraph**, **NVIDIA NeMo Guardrails**, **Portkey LLM Gateway**, **Gemini Embeddings**, and **Qdrant Cloud**, this system is engineered to solve the most prevalent enterprise RAG bottlenecks: off-topic hallucinations, prompt injection vulnerability, noisy context dilution, and single-provider rate limit failures.
+**AxiomRAG** is a battle-tested, enterprise-scale **Agentic Retrieval-Augmented Generation (RAG)** platform. Built with **LangGraph**, **NVIDIA NeMo Guardrails**, **Portkey LLM Gateway**, **Gemini Embeddings**, and **Qdrant Cloud**, this system is engineered to solve the most prevalent enterprise RAG bottlenecks: off-topic hallucinations, prompt injection vulnerability, noisy context dilution, and single-provider rate limit failures.
 
 ---
 
@@ -208,8 +208,8 @@ flowchart LR
 
 ```bash
 # Clone the repository
-git clone https://github.com/viditsharma1405/Enterprise-Agentic-RAG.git
-cd Enterprise-Agentic-RAG
+git clone https://github.com/viditsharma1405/AxiomRAG.git
+cd AxiomRAG
 
 # Create Python 3.11 virtual environment
 python3 -m venv venv
