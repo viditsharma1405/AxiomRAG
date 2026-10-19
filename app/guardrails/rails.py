@@ -1,0 +1,86 @@
+import logfire
+from langchain_groq import ChatGroq
+from nemoguardrails import RailsConfig, LLMRails
+
+from app.config import settings
+from app.guardrails.colang_rules import COLANG_CONTENT, YAML_CONTENT, RAIL_INDICATORS
+
+
+_rails: LLMRails | None = None
+
+
+def initialize_rails() -> None:
+    """
+    Build the NeMo LLMRails singleton at app startup.
+    Uses llama-3.1-8b-instant for fast intent classification at the gate —
+    the heavier llama-3.3-70b-versatile is reserved for the RAG pipeline.
+    """
+    global _rails
+
+    guard_llm = ChatGroq(
+        api_key=settings.GROQ_API_KEY,
+        model=settings.GROQ_FAST_MODEL,
+        temperature=0
+    )
+
+    config = RailsConfig.from_content(
+        colang_content=COLANG_CONTENT,
+        yaml_content=YAML_CONTENT
+    )
+
+    _rails = LLMRails(config, llm=guard_llm)
+    logfire.info("🛡️ NeMo Guardrails initialised (llama-3.1-8b-instant).")
+    
+    
+
+
+CONVERSATIONAL_MEMORY_PATTERNS = [
+    r"\b(what('s| is| was)? my (name|question|prompt))\b",
+    r"\bwho am i\b",
+    r"\bdo you (know|remember) (my name|me|what i said)\b",
+    r"\b(repeat|recall) (what i said|my last question)\b",
+    r"\bmy name is\b",
+]
+
+def is_conversational_memory_query(text: str) -> bool:
+    import re
+    return any(re.search(pat, text, re.IGNORECASE) for pat in CONVERSATIONAL_MEMORY_PATTERNS)
+
+def guard(message: str) -> tuple[bool, str | None]:
+    """
+    Run a user message through the NeMo rails gate.
+
+    Returns:
+        (True,  rail_response) — a rail fired; return this response immediately,
+                                skip the RAG pipeline entirely.
+        (False, None)          — message is clean; proceed to LangGraph.
+    """
+    if _rails is None:
+        logfire.warning("⚠️ Guardrails not initialised — skipping gate.")
+        return False, None
+
+    # Conversational memory & identity queries belong to LangGraph MemorySaver
+    if is_conversational_memory_query(message):
+        logfire.info("💬 Conversational memory query detected — passing directly to LangGraph.")
+        return False, None
+
+    with logfire.span("🛡️ Guardrails Check"):
+        result = _rails.generate(messages=[{"role": "user", "content": message}])
+
+        # NeMo returns {'role': 'assistant', 'content': '...'} — extract text
+        import re
+        content = result.get("content", "") if isinstance(result, dict) else str(result)
+        # Strip reasoning models' <think>...</think> tags if present
+        clean_content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+
+        fired = any(indicator.lower() in clean_content.lower() for indicator in RAIL_INDICATORS)
+
+        if fired:
+            logfire.info(f"🛡️ Guardrails fired | query='{message[:80]}'")
+            # If the refusal is too generic or empty, provide standard professional refusal
+            if not clean_content or len(clean_content) < 5:
+                clean_content = "I'm an Enterprise IT Assistant focused on Kubernetes, Intel hardware, and networking. I can't help with that — but feel free to ask any technical questions!"
+            return True, clean_content
+
+        logfire.info("✅ Guardrails passed.")
+        return False, None
